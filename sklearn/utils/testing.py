@@ -468,7 +468,8 @@ DONT_TEST = ['SparseCoder', 'EllipticEnvelope', 'DictVectorizer',
              'LabelBinarizer', 'LabelEncoder', 'MultiLabelBinarizer',
              'TfidfTransformer', 'IsotonicRegression', 'OneHotEncoder',
              'RandomTreesEmbedding', 'FeatureHasher', 'DummyClassifier',
-             'DummyRegressor', 'TruncatedSVD', 'PolynomialFeatures']
+             'DummyRegressor', 'TruncatedSVD', 'PolynomialFeatures',
+             '_SigmoidCalibration']
 
 
 def all_estimators(include_meta_estimators=False, include_other=False,
