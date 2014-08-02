@@ -30,7 +30,7 @@ from ..externals.six.moves import zip
 from ..preprocessing import label_binarize
 from ..preprocessing import LabelBinarizer
 from ..preprocessing import LabelEncoder
-from ..utils import check_array, check_consistent_length
+from ..utils import check_array
 from ..utils import column_or_1d
 from ..utils import check_consistent_length
 from ..utils.multiclass import unique_labels
@@ -1573,24 +1573,19 @@ def calibration_plot(y_true, y_prob, n_bins=5):
     y_prob = column_or_1d(y_prob)
     y_true = _check_and_normalize(y_true, y_prob)
 
-    # # Adaptive binning
-    # bins = np.linspace(0, y_true.size - 1, n_bins + 1).astype(np.int)
-    # bins = np.sort(y_prob)[bins]
-    # bins[0] = 0.
-    # bins[-1] = 1.
-
-    # Fixed binning
-    bins = np.linspace(0., 1., n_bins + 1)
+    bins = np.linspace(0., 1. + 1e-8, n_bins + 1)
 
     binids = np.digitize(y_prob, bins) - 1
     ids = np.arange(len(y_true))
 
-    prob_true = []
-    prob_pred = []
+    u_binids = np.unique(binids)  # don't consider empty bins
 
-    for binid in np.unique(binids):
+    prob_true = np.empty(len(u_binids))
+    prob_pred = np.empty(len(u_binids))
+
+    for k, binid in enumerate(u_binids):
         sel = ids[binids == binid]
-        prob_true.append(np.mean(y_true[sel]))
-        prob_pred.append(np.mean(y_prob[sel]))
+        prob_true[k] = np.mean(y_true[sel])
+        prob_pred[k] = np.mean(y_prob[sel])
 
-    return np.array(prob_true), np.array(prob_pred)
+    return prob_true, prob_pred
