@@ -32,6 +32,7 @@ from ..preprocessing import LabelBinarizer
 from ..preprocessing import LabelEncoder
 from ..utils import check_array, check_consistent_length
 from ..utils import column_or_1d
+from ..utils import check_consistent_length
 from ..utils.multiclass import unique_labels
 from ..utils.multiclass import type_of_target
 
@@ -1468,8 +1469,7 @@ def hinge_loss(y_true, pred_decision, pos_label=None, neg_label=None):
 
 
 def _check_and_normalize(y_true, y_prob):
-    if len(y_true) != len(y_prob):
-        raise ValueError("y_true and y_prob must have the same length.")
+    check_consistent_length(y_true, y_prob)
 
     labels = np.unique(y_true)
 
@@ -1482,11 +1482,7 @@ def _check_and_normalize(y_true, y_prob):
     if y_prob.min() < 0:
         raise ValueError("y_prob contains values less than 0.")
 
-    y_true = y_true.copy()
-    y_true[y_true == labels[0]] = 0
-    y_true[y_true == labels[1]] = 1
-
-    return y_true
+    return label_binarize(y_true, labels)[:, 0]
 
 
 def brier_score_loss(y_true, y_prob):
