@@ -172,7 +172,7 @@ class CalibratedClassifierCV(BaseEstimator, ClassifierMixin):
 
     With this class, the base_estimator is fit on the train set of the
     cross-validation generator and the test set is used for calibration.
-    The log probabilities for each of the folds are then averaged
+    The probabilities for each of the folds are then averaged
     for prediction.
 
     Parameters
