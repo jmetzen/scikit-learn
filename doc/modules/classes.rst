@@ -755,6 +755,7 @@ details.
    metrics.roc_auc_score
    metrics.roc_curve
    metrics.zero_one_loss
+   metrics.brier_score_loss
 
 Regression metrics
 ------------------
@@ -973,6 +974,34 @@ Pairwise metrics
    :template: class.rst
 
    neural_network.BernoulliRBM
+
+
+.. _calibration_ref:
+
+:mod:`sklearn.calibration`: Probability Calibration
+===================================================
+
+.. automodule:: sklearn.calibration
+   :no-members:
+   :no-inherited-members:
+
+**User guide:** See the :ref:`calibration` section for further details.
+
+.. currentmodule:: sklearn
+
+.. autosummary::
+   :toctree: generated/
+   :template: class.rst
+
+   calibration.CalibratedClassifier
+   calibration.CalibratedClassifierCV
+
+
+.. autosummary::
+   :toctree: generated/
+   :template: function.rst
+
+   calibration.calibration_plot
 
 
 .. _cross_decomposition_ref:
