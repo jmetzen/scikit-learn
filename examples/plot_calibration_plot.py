@@ -22,7 +22,7 @@ from sklearn import datasets
 from sklearn.naive_bayes import GaussianNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss
-from sklearn.calibration import CalibratedClassifierCV, calibration_plot
+from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 from sklearn.cross_validation import train_test_split
 
 data = datasets.fetch_covtype()
@@ -66,7 +66,7 @@ for clf, name in [(lr, 'Logistic'),
     clf_score = brier_score_loss(y_test, prob_pos)
     print("%s: %1.3f" % (name, clf_score))
     mean_predicted_value, fraction_of_positives = \
-        calibration_plot(y_test, prob_pos, n_bins=10)
+        calibration_curve(y_test, prob_pos, n_bins=10)
     plt.plot(mean_predicted_value, fraction_of_positives, "s-",
              label="%s (%1.3f)" % (name, clf_score))
 plt.xlabel("Mean predicted value")
