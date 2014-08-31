@@ -53,7 +53,7 @@ gnb_sigmoid = CalibratedClassifierCV(gnb, cv=2, method='sigmoid')
 
 print("-- Brier scores:")
 
-plt.figure()
+plt.figure(figsize=(10, 10))
 ax1 = plt.subplot2grid((3, 1), (0, 0), rowspan=2)
 ax2 = plt.subplot2grid((3, 1), (2, 0))
 
@@ -84,4 +84,5 @@ ax2.set_xlabel("Mean predicted value")
 ax2.set_ylabel("Count")
 ax2.legend(loc="best")
 
+plt.tight_layout()
 plt.show()
