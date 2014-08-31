@@ -1,7 +1,7 @@
 """
-============================
-Probability Calibration plot
-============================
+=============================
+Probability Calibration curve
+=============================
 
 When performing classfication you often want to predict, not only
 the class label, but also the associated probability. This probability
