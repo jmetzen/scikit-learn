@@ -74,15 +74,13 @@ print("With sigmoid calibration: %1.3f" % clf_sigmoid_score)
 ###############################################################################
 # Plot the data and the predicted probabilities
 plt.figure()
-plt.subplot(2, 1, 1)
 for this_y in np.unique(y):
     this_X = X_train[y_train == this_y]
     plt.plot(this_X[:, 0], this_X[:, 1], 'x', label="Class %s" % this_y)
 plt.legend(loc="best")
 plt.title("Data")
 
-
-plt.subplot(2, 1, 2)
+plt.figure()
 order = np.lexsort((prob_pos_clf, ))
 plt.plot(prob_pos_clf[order], 'r', label='No calibration (%1.3f)' % clf_score)
 plt.plot(prob_pos_isotonic[order], 'g', linewidth=3,
@@ -99,5 +97,4 @@ plt.ylabel("P(y=1)")
 plt.legend(loc="upper left")
 plt.title("Gaussian Naive Bayes probabilities")
 
-plt.tight_layout()
 plt.show()
