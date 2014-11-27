@@ -3,10 +3,10 @@
 Probability calibration of classifiers
 ======================================
 
-When performing classfication you often want to predict, not only
+When performing classification you often want to predict, not only
 the class label, but also the associated probability. This probability
 gives you some kind of confidence on the prediction. This example
-demonstrates how to transform the decisition function of a generic
+demonstrates how to transform the decision function of a generic
 classifier into a calibrated probability. The accuracy is estimated
 with Brier's score (see http://en.wikipedia.org/wiki/Brier_score).
 
