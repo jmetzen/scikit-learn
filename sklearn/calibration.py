@@ -22,11 +22,167 @@ from .cross_validation import _check_cv
 from .metrics.classification import _check_and_normalize
 
 
-class CalibratedClassifier(BaseEstimator, ClassifierMixin):
+class CalibratedClassifierCV(BaseEstimator, ClassifierMixin):
+    """Probability calibration with isotonic regression or sigmoid
+
+    With this class, the base_estimator is fit on the train set of the
+    cross-validation generator and the test set is used for calibration.
+    The probabilities for each of the folds are then averaged
+    for prediction. In case that cv="prefit" is passed to __init__, 
+    it is it is assumed that base_estimator has been
+    fitted already and all data is used for calibration. Note that
+    data for fitting the classifier and for calibrating it must be disjpint.
+
+    Parameters
+    ----------
+    base_estimator : instance BaseEstimator
+        The classifier whose output decision function needs to be calibrated
+        to offer more accurate predict_proba outputs. If cv=prefit, the
+        classifier must have been fit already on data.
+
+    method : 'sigmoid' | 'isotonic'
+        The method to use for calibration. Can be 'sigmoid' which
+        corresponds to Platt's method or 'isotonic' which is a
+        non-parameteric approach.
+
+    cv : integer or cross-validation generator or "prefit", optional
+        If an integer is passed, it is the number of folds (default 3).
+        Specific cross-validation objects can be passed, see
+        sklearn.cross_validation module for the list of possible objects.
+        If "prefit" is passed, it is assumed that base_estimator has been
+        fitted already and all data is used for calibration.
+
+    References
+    ----------
+    .. [1] Obtaining calibrated probability estimates from decision trees
+           and naive Bayesian classifiers, B. Zadrozny & C. Elkan, ICML 2001
+
+    .. [2] Transforming Classifier Scores into Accurate Multiclass
+           Probability Estimates, B. Zadrozny & C. Elkan, (KDD 2002)
+
+    .. [3] Probabilistic Outputs for Support Vector Machines and Comparisons to
+           Regularized Likelihood Methods, J. Platt, (1999)
+
+    .. [4] Predicting Good Probabilities with Supervised Learning, 
+           A. Niculescu-Mizil & R. Caruana, ICML 2005
+    """
+    def __init__(self, base_estimator=GaussianNB(), method='sigmoid', cv=3):
+        self.base_estimator = base_estimator
+        self.method = method
+        self.cv = cv
+
+    def fit(self, X, y, sample_weight=None):
+        """Fit the calibrated model
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            Training data.
+
+        y : array-like, shape (n_samples,)
+            Target values.
+
+        sample_weight : array-like, shape = [n_samples] or None
+            Sample weights. If None, then samples are equally weighted.
+
+        Returns
+        -------
+        self : object
+            Returns an instance of self.
+        """
+        X = check_array(X, accept_sparse=['csc', 'csr', 'coo'])
+        y = column_or_1d(y)
+        X, y = indexable(X, y)
+        lb = LabelBinarizer().fit(y)
+        self.classes_ = lb.classes_
+
+        self.calibrated_classifiers_ = []
+        if self.cv == "prefit":
+            calibrated_classifier = _CalibratedClassifier(self.base_estimator,
+                                                          method=self.method)
+            if sample_weight is not None:
+                calibrated_classifier.fit(X, y, sample_weight)
+            else:
+                calibrated_classifier.fit(X, y)
+            self.calibrated_classifiers_.append(calibrated_classifier)
+        else:
+            cv = _check_cv(self.cv, X, y, classifier=True)
+            for train, test in cv:
+                this_estimator = clone(self.base_estimator)
+                if sample_weight is not None and \
+                   "sample_weight" in inspect.getargspec(this_estimator.fit)[0]:
+                    this_estimator.fit(X[train], y[train], sample_weight[train])
+                else:
+                    this_estimator.fit(X[train], y[train])
+
+                calibrated_classifier = \
+                    _CalibratedClassifier(this_estimator, method=self.method)
+                if sample_weight is not None:
+                    calibrated_classifier.fit(X[test], y[test],
+                                              sample_weight[test])
+                else:
+                    calibrated_classifier.fit(X[test], y[test])
+                self.calibrated_classifiers_.append(calibrated_classifier)
+
+        return self
+
+    def predict_proba(self, X):
+        """Posterior probabilities of classification
+
+        This function returns posterior probabilities of classification
+        according to each class on an array of test vectors X.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            The samples.
+
+        Returns
+        -------
+        C : array, shape (n_samples, n_classes)
+            The predicted probas.
+        """
+        X = check_array(X, accept_sparse=['csc', 'csr', 'coo'])
+        mean_proba = np.zeros((X.shape[0], len(self.classes_)))
+        # tiny = np.finfo(np.float).tiny
+
+        # XXX: Which average should be taken? Geometric Harmonic etc.
+        for calibrated_classifier in self.calibrated_classifiers_:
+            proba = calibrated_classifier.predict_proba(X)
+            mean_proba += proba
+            # XXX : don't know if I should average the log or plain probas
+            # proba = np.maximum(proba, tiny)  # to avoid log of 0 warning
+            # mean_proba += np.log(proba)
+
+        mean_proba /= len(self.calibrated_classifiers_)
+        # proba = np.exp(mean_proba)
+
+        return mean_proba
+
+    def predict(self, X):
+        """Predict the target of new samples. Can be different from the
+        prediction of the uncalibrated classifier.
+
+        Parameters
+        ----------
+        X : array-like, shape (n_samples, n_features)
+            The samples.
+
+        Returns
+        -------
+        C : array, shape (n_samples,)
+            The predicted class.
+        """
+        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
+
+
+class _CalibratedClassifier(object):
     """Probability calibration with isotonic regression or sigmoid.
 
     It assumes that base_estimator has already been fit, and trains the
-    calibration on the input set of the fit function
+    calibration on the input set of the fit function. Note that this class
+    should not be used as an estimator directly. Use CalibratedClassifierCV
+    with cv="prefit" instead.
 
     Parameters
     ----------
@@ -157,162 +313,6 @@ class CalibratedClassifier(BaseEstimator, ClassifierMixin):
         proba[np.isnan(proba)] = 1. / n_classes
 
         return proba
-
-    def predict(self, X):
-        """Predict the target of new samples.
-
-        Can be different from the prediction of the uncalibrated classifier.
-
-        Parameters
-        ----------
-        X : array-like, shape (n_samples, n_features)
-            The samples.
-
-        Returns
-        -------
-        C : array, shape (n_samples,)
-            The predicted class.
-        """
-        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
-
-
-class CalibratedClassifierCV(BaseEstimator, ClassifierMixin):
-    """Probability calibration with isotonic regression or sigmoid
-
-    With this class, the base_estimator is fit on the train set of the
-    cross-validation generator and the test set is used for calibration.
-    The probabilities for each of the folds are then averaged
-    for prediction.
-
-    Parameters
-    ----------
-    base_estimator : instance BaseEstimator
-        The classifier whose output decision function needs to be calibrated
-        to offer more accurate predict_proba outputs.
-
-    method : 'sigmoid' | 'isotonic'
-        The method to use for calibration. Can be 'sigmoid' which
-        corresponds to Platt's method or 'isotonic' which is a
-        non-parameteric approach.
-
-    cv : integer or cross-validation generator, optional
-        If an integer is passed, it is the number of folds (default 3).
-        Specific cross-validation objects can be passed, see
-        sklearn.cross_validation module for the list of possible objects
-
-    References
-    ----------
-    .. [1] Obtaining calibrated probability estimates from decision trees
-           and naive Bayesian classifiers, B. Zadrozny & C. Elkan, ICML 2001
-
-    .. [2] Transforming Classifier Scores into Accurate Multiclass
-           Probability Estimates, B. Zadrozny & C. Elkan, (KDD 2002)
-
-    .. [3] Probabilistic Outputs for Support Vector Machines and Comparisons to
-           Regularized Likelihood Methods, J. Platt, (1999)
-
-    .. [4] Predicting Good Probabilities with Supervised Learning, 
-           A. Niculescu-Mizil & R. Caruana, ICML 2005
-    """
-    def __init__(self, base_estimator=GaussianNB(), method='sigmoid', cv=3):
-        self.base_estimator = base_estimator
-        self.method = method
-        self.cv = cv
-
-    def fit(self, X, y, sample_weight=None):
-        """Fit the calibrated model
-
-        Parameters
-        ----------
-        X : array-like, shape (n_samples, n_features)
-            Training data.
-
-        y : array-like, shape (n_samples,)
-            Target values.
-
-        sample_weight : array-like, shape = [n_samples] or None
-            Sample weights. If None, then samples are equally weighted.
-
-        Returns
-        -------
-        self : object
-            Returns an instance of self.
-        """
-        X = check_array(X, accept_sparse=['csc', 'csr', 'coo'])
-        y = column_or_1d(y)
-        X, y = indexable(X, y)
-        lb = LabelBinarizer().fit(y)
-        self.classes_ = lb.classes_
-
-        cv = _check_cv(self.cv, X, y, classifier=True)
-        self.calibrated_classifiers_ = []
-
-        for train, test in cv:
-            this_estimator = clone(self.base_estimator)
-            if sample_weight is not None and \
-               "sample_weight" in inspect.getargspec(this_estimator.fit)[0]:
-                this_estimator.fit(X[train], y[train], sample_weight[train])
-            else:
-                this_estimator.fit(X[train], y[train])
-
-            calibrated_classifier = CalibratedClassifier(this_estimator,
-                                                         method=self.method)
-            if sample_weight is not None:
-                calibrated_classifier.fit(X[test], y[test],
-                                          sample_weight[test])
-            else:
-                calibrated_classifier.fit(X[test], y[test])
-            self.calibrated_classifiers_.append(calibrated_classifier)
-
-        return self
-
-    def predict_proba(self, X):
-        """Posterior probabilities of classification
-
-        This function returns posterior probabilities of classification
-        according to each class on an array of test vectors X.
-
-        Parameters
-        ----------
-        X : array-like, shape (n_samples, n_features)
-            The samples.
-
-        Returns
-        -------
-        C : array, shape (n_samples, n_classes)
-            The predicted probas.
-        """
-        X = check_array(X, accept_sparse=['csc', 'csr', 'coo'])
-        mean_proba = np.zeros((X.shape[0], len(self.classes_)))
-        # tiny = np.finfo(np.float).tiny
-
-        for calibrated_classifier in self.calibrated_classifiers_:
-            proba = calibrated_classifier.predict_proba(X)
-            mean_proba += proba
-            # XXX : don't know if I should average the log or plain probas
-            # proba = np.maximum(proba, tiny)  # to avoid log of 0 warning
-            # mean_proba += np.log(proba)
-
-        mean_proba /= len(self.calibrated_classifiers_)
-        # proba = np.exp(mean_proba)
-
-        return mean_proba
-
-    def predict(self, X):
-        """Predict the target of new samples. Can be different from the
-        prediction of the uncalibrated classifier.
-
-        Parameters
-        ----------
-        X : array-like, shape (n_samples, n_features)
-            The samples.
-
-        Returns
-        -------
-        C : array, shape (n_samples,)
-            The predicted class.
-        """
-        return self.classes_[np.argmax(self.predict_proba(X), axis=1)]
 
 
 def sigmoid_calibration(df, y, sample_weight=None):
