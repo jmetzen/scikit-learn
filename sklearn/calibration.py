@@ -6,6 +6,7 @@
 #
 # License: BSD 3 clause
 
+from __future__ import division
 import inspect
 
 from math import log
@@ -484,18 +485,14 @@ def calibration_curve(y_true, y_prob, normalize=False, n_bins=5):
     y_true = _check_and_normalize(y_true, y_prob)
 
     bins = np.linspace(0., 1. + 1e-8, n_bins + 1)
-
     binids = np.digitize(y_prob, bins) - 1
-    ids = np.arange(len(y_true))
 
-    u_binids = np.unique(binids)  # don't consider empty bins
+    bin_sums = np.bincount(binids, weights=y_prob, minlength=len(bins))
+    bin_true = np.bincount(binids, weights=y_true, minlength=len(bins))
+    bin_total = np.bincount(binids, minlength=len(bins))
 
-    prob_true = np.empty(len(u_binids))
-    prob_pred = np.empty(len(u_binids))
-
-    for k, binid in enumerate(u_binids):
-        sel = ids[binids == binid]
-        prob_true[k] = np.mean(y_true[sel])
-        prob_pred[k] = np.mean(y_prob[sel])
+    nonzero = bin_total != 0
+    prob_true = (bin_true[nonzero] / bin_total[nonzero])
+    prob_pred = (bin_sums[nonzero] / bin_total[nonzero])
 
     return prob_true, prob_pred
