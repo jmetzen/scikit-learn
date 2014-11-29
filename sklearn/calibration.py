@@ -20,7 +20,7 @@ from .utils import check_array, indexable, column_or_1d
 from .isotonic import IsotonicRegression
 from .naive_bayes import GaussianNB
 from .cross_validation import _check_cv
-from .metrics.classification import _check_and_normalize
+from .metrics.classification import _check_binary_probabilistic_predictions
 
 
 class CalibratedClassifierCV(BaseEstimator, ClassifierMixin):
@@ -482,7 +482,7 @@ def calibration_curve(y_true, y_prob, normalize=False, n_bins=5):
         raise ValueError("y_prob has values outside [0, 1] and normalize is "
                          "set to False.")
 
-    y_true = _check_and_normalize(y_true, y_prob)
+    y_true = _check_binary_probabilistic_predictions(y_true, y_prob)
 
     bins = np.linspace(0., 1. + 1e-8, n_bins + 1)
     binids = np.digitize(y_prob, bins) - 1
