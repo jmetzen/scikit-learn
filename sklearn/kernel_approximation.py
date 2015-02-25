@@ -456,18 +456,23 @@ class Nystroem(BaseEstimator, TransformerMixin):
         n_components = min(n_samples, n_components)
         inds = rnd.permutation(n_samples)
         basis_inds = inds[:n_components]
-        basis = X[basis_inds]
 
-        basis_kernel = pairwise_kernels(basis, metric=self.kernel,
-                                        filter_params=True,
-                                        **self._get_kernel_params())
+        if self.kernel == "precomputed":
+            assert X.shape[0] == X.shape[1]
+            basis_kernel = X[np.ix_(basis_inds, basis_inds)]
+        else:
+            basis = X[basis_inds]
+            basis_kernel = pairwise_kernels(basis, metric=self.kernel,
+                                            filter_params=True,
+                                            **self._get_kernel_params())
 
         # sqrt of kernel matrix on basis vectors
         U, S, V = svd(basis_kernel)
         S = np.maximum(S, 1e-12)
         self.normalization_ = np.dot(U * 1. / np.sqrt(S), V)
-        self.components_ = basis
-        self.component_indices_ = inds
+        if not self.kernel == "precomputed":
+            self.components_ = basis
+        self.component_indices_ = basis_inds
         return self
 
     def transform(self, X):
@@ -486,13 +491,16 @@ class Nystroem(BaseEstimator, TransformerMixin):
         X_transformed : array, shape=(n_samples, n_components)
             Transformed data.
         """
-        check_is_fitted(self, 'components_')
+        check_is_fitted(self, 'normalization_')
 
-        kernel_params = self._get_kernel_params()
-        embedded = pairwise_kernels(X, self.components_,
-                                    metric=self.kernel,
-                                    filter_params=True,
-                                    **kernel_params)
+        if self.kernel == "precomputed":
+            embedded = X[self.component_indices_].T
+        else:
+            kernel_params = self._get_kernel_params()
+            embedded = pairwise_kernels(X, self.components_,
+                                        metric=self.kernel,
+                                        filter_params=True,
+                                        **kernel_params)
         return np.dot(embedded, self.normalization_.T)
 
     def _get_kernel_params(self):
