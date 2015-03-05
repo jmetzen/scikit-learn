@@ -2,7 +2,7 @@
 import numpy as np
 import pylab
 
-from sklearn.gaussian_process import GaussianProcessRegression
+from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import Kernel, RBF
 
 
@@ -42,33 +42,34 @@ class ManifoldKernel(Kernel):
             self.theta[np.where(self.theta == 0)] \
                 += np.random.random((self.theta == 0).sum()) * 2e-5 - 1e-5
 
-    def auto_correlation(self, X, eval_gradient=False):
+    def __call__(self, X, Y=None, eval_gradient=False):
         X_nn = self._project_manifold(X)
-        K = self.base_kernel.auto_correlation(X_nn)
-        if not eval_gradient:
-            return K
+        if Y is None:
+            K = self.base_kernel(X_nn)
+            if not eval_gradient:
+                return K
+            else:
+                # XXX: Analytic expression for gradient based on chain rule and
+                #      backpropagation?
+                K_gradient = np.empty((K.shape[0], K.shape[1],
+                                       self.theta.shape[0]))
+                for i in range(self.theta.shape[0]):
+                    eps = np.zeros_like(self.theta)
+                    eps[i] += 1e-5
+                    X_nn_i = self._project_manifold(X, self.theta + eps)
+                    K_i = self.base_kernel(X_nn_i)
+                    K_gradient[..., i] = (K_i - K) / 1e-5
+
+                return K, K_gradient
         else:
-            # XXX: Analytic expression for gradient based on chain rule and
-            #      backpropagation?
-            K_gradient = np.empty((K.shape[0], K.shape[1],
-                                   self.theta.shape[0]))
-            for i in range(self.theta.shape[0]):
-                eps = np.zeros_like(self.theta)
-                eps[i] += 1e-5
-                X_nn_i = self._project_manifold(X, self.theta + eps)
-                K_i = self.base_kernel.auto_correlation(X_nn_i)
-                K_gradient[..., i] = (K_i - K) / 1e-5
-
-            return K, K_gradient
-
-
-    def cross_correlation(self, X1, X2):
-        X1_nn = self._project_manifold(X1)
-        X2_nn = self._project_manifold(X2)
-        return self.base_kernel.cross_correlation(X1_nn, X2_nn)
+            if eval_gradient:
+                raise ValueError(
+                    "Gradient can only be evaluated when Y is None.")
+            Y_nn = self._project_manifold(Y)
+            return self.base_kernel(X_nn, Y_nn)
 
     def _project_manifold(self, X, theta=None):
-        # Lazila fetch transfer function (to keep object pickable)
+        # Lazily fetch transfer function (to keep object pickable)
         if self.transfer_fct == "tanh":
             transfer_fct = np.tanh
         elif self.transfer_fct == "sin":
@@ -119,7 +120,7 @@ np.random.seed(0)
 kernel = (1e-10, 1.0, 100) \
     * ManifoldKernel(base_kernel=RBF(0.1), architecture=((1, 2),),
                      transfer_fct="tanh", max_nn_weight=1)
-gp = GaussianProcessRegression(kernel=kernel)
+gp = GaussianProcessRegressor(kernel=kernel)
 
 
 X_ = np.linspace(-7.5, 7.5, 100)
