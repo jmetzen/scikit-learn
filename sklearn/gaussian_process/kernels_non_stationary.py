@@ -4,9 +4,51 @@ from sklearn.gaussian_process.kernels import Kernel, _approx_fprime
 
 
 class ManifoldKernel(Kernel):
+    """ Non-stationary correlation model based on manifold learning.
+
+    This non-stationary kernel consists internally of two parts:
+    a mapping from the actual data space onto a manifold and a stationary
+    kernel on this manifold. The mapping is realized by a neural
+    network whose architecture can be specified externally. The parameters of
+    this network are learned along with the length scales of the Gaussian
+    process, typically such that the marginal likelihood or the posterior
+    probability of the GP are maximized. Any common stationary kernel
+    can then be used on top of this manifold.
+
+    Parameters
+    ----------
+    base_kernel: Kernel
+        The top-level, stationary kernel returning
+
+    architecture: sequence of tuples
+        Defines the structure of the internal neural network architecture
+        mapping the data from the original data space onto a manifold. Note
+        that different data dimensions can be processed by different networks
+        and that the networks can have different number of layers. For
+        instance, the architecture ((1, 2),(2, 4, 5)) would map a 3-dimensional
+        input space onto a 7-dimensional manifold. For this, the first input
+        dimension would be processed by the network (1, 2) with 1 inputs,
+        2 outputs, and no hidden layer yielding the first two manifold
+        dimensions. The other two input dimensions would be processed by a
+        network (2, 4, 5) with 2 inputs, 4 hidden units, and 5 outputs
+        yielding the remaining five manifold dimensions.
+
+    transfer_fct: str, default="tanh"
+        The transfer function used in the hidden and output units. Supported
+        are "tanh" and the rectified linear unit ("relu"). Defaults is "tanh"
+
+    max_nn_weight: float, default=5.0
+        The maximum absolute value a weight of the neural network might have.
+
+    .. seealso::
+
+    "Manifold Gaussian Process for Regression",
+    Roberto Calandra, Jan Peters, Carl Edward Rasmussen, Marc Peter Deisenroth,
+    http://arxiv.org/abs/1402.5876
+    """
 
     def __init__(self, base_kernel, architecture, transfer_fct="tanh",
-                 max_nn_weight=5):
+                 max_nn_weight=5.0):
         self.base_kernel = base_kernel
 
         self.architecture = architecture
