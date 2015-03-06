@@ -1,6 +1,6 @@
 import numpy as np
 
-from sklearn.gaussian_process.kernels import Kernel
+from sklearn.gaussian_process.kernels import Kernel, _approx_fprime
 
 
 class ManifoldKernel(Kernel):
@@ -12,13 +12,16 @@ class ManifoldKernel(Kernel):
         self.architecture = architecture
         self.transfer_fct = transfer_fct
 
-        n_outputs, theta_nn_size = determine_network_layout(architecture)
+        n_outputs, self.theta_nn_size = determine_network_layout(architecture)
 
         theta0 = \
             list(np.random.uniform(-max_nn_weight, max_nn_weight,
-                                   theta_nn_size))
-        thetaL = [-max_nn_weight] * theta_nn_size
-        thetaU = [max_nn_weight] * theta_nn_size
+                                   self.theta_nn_size)) \
+                + list(self.base_kernel.params)
+        thetaL = [-max_nn_weight] * self.theta_nn_size \
+            + list(self.base_kernel.bounds[:, 0])
+        thetaU = [max_nn_weight] * self.theta_nn_size \
+            + list(self.base_kernel.bounds[:, 1])
 
         param_space = np.vstack((thetaL, theta0, thetaU)).T
 
@@ -26,11 +29,13 @@ class ManifoldKernel(Kernel):
 
     @property
     def params(self):
-        return self.theta
+        base_params = self.base_kernel.params
+        return np.hstack((self.theta, base_params))
 
     @params.setter
     def params(self, theta):
-        self.theta = np.asarray(theta, dtype=np.float)
+        self.theta = np.asarray(theta[:self.theta_nn_size], dtype=np.float)
+        self.base_kernel.params = theta[self.theta_nn_size:]
         if self.theta.ndim == 2:
             self.theta = self.theta[:, 0]
 
@@ -46,18 +51,15 @@ class ManifoldKernel(Kernel):
             if not eval_gradient:
                 return K
             else:
+                # approximate gradient numerically
                 # XXX: Analytic expression for gradient based on chain rule and
                 #      backpropagation?
-                K_gradient = np.empty((K.shape[0], K.shape[1],
-                                       self.theta.shape[0]))
-                for i in range(self.theta.shape[0]):
-                    eps = np.zeros_like(self.theta)
-                    eps[i] += 1e-5
-                    X_nn_i = self._project_manifold(X, self.theta + eps)
-                    K_i = self.base_kernel(X_nn_i)
-                    K_gradient[..., i] = (K_i - K) / 1e-5
-
-                return K, K_gradient
+                def f(params):  # helper function
+                    import copy  # XXX: Avoid deepcopy
+                    kernel = copy.deepcopy(self)
+                    kernel.params = params
+                    return kernel(X)
+                return K, _approx_fprime(self.params, f, 1e-10)
         else:
             if eval_gradient:
                 raise ValueError(
@@ -73,6 +75,8 @@ class ManifoldKernel(Kernel):
             transfer_fct = np.sin
         elif self.transfer_fct == "relu":
             transfer_fct = lambda x: np.maximum(0, x)
+        elif self.transfer_fct == "linear":
+            transfer_fct = lambda x: x
         elif hasattr(self.transfer_fct, "__call__"):
             transfer_fct = self.transfer_fct
 
