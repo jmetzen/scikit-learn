@@ -306,8 +306,8 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
         try:
             L = cholesky(K, lower=True)  # Line 2
         except np.linalg.LinAlgError:
-            return (-np.inf, np.zeros_like(theta)) \
-                if eval_gradient else -np.inf
+            return (np.finfo(float).min, np.zeros_like(theta)) \
+                 if eval_gradient else -np.finfo(float).min
 
         alpha = cho_solve((L, True), self.y_fit_)  # Line 3
 
