@@ -2,6 +2,7 @@ import numpy as np
 
 from scipy.special import gamma, kv
 
+from sklearn.cluster import KMeans
 from sklearn.gaussian_process.kernels import Kernel, _approx_fprime
 
 
@@ -192,18 +193,23 @@ class LocalLengthScalesKernel(Kernel):
     ECML 2008
     """
 
-    def __init__(self, n_dims,
+    def __init__(self, n_dims, X, nu=1.5,
                  isotropic=True, theta0=1e-1, thetaL=1e-3, thetaU=1.0,
                  l_isotropic=True, theta_l_0=1e-1, theta_l_L=1e-3, theta_l_U=1e1,
-                 l_samples=10, l_0=1.0, l_L=0.1, l_U=10.0, X_=None):
+                 l_samples=10, l_0=1.0, l_L=0.1, l_U=10.0):
         self.n_dims = n_dims
+        self.nu = nu
         self.isotropic = isotropic
         self.l_isotropic = l_isotropic
         self.l_samples = l_samples
-        self.X_ = np.asarray(X_)
-        if self.X_ is not None:
-            assert self.X_.shape[0] == self.l_samples
-        assert self.X_ is not None  # XXX
+
+        assert X is not None
+        X = np.asarray(X)
+        if X.shape[0] > self.l_samples:
+            kmeans = KMeans(n_clusters=self.l_samples)
+            self.X_ = kmeans.fit(X).cluster_centers_
+        else:
+            self.X_ = np.asarray(X)
 
         # Determine how many entries in theta belong to the different
         # categories (used later for parsing theta)
@@ -245,7 +251,7 @@ class LocalLengthScalesKernel(Kernel):
 
         # Train length-scale Gaussian Process
         kernel = RBF(np.atleast_2d(self.theta_l))
-        self.gp_l = GaussianProcessRegressor(kernel=kernel)
+        self.gp_l = GaussianProcessRegressor(kernel=kernel)  # XXX: deactivate optimizer
         self.gp_l.fit(self.X_, np.log10(self.length_scales))
 
     def __call__(self, X, Y=None, eval_gradient=False):
@@ -271,19 +277,17 @@ class LocalLengthScalesKernel(Kernel):
                               np.repeat(l_train, len(l_train))])  # XXX: check
 
         # Compute general Matern kernel
-        nu = 1.5
         if d.ndim > 1 and self.theta_gp.size == d.ndim:
             activation = \
                 np.sum(self.theta_gp.reshape(1, d.ndim) * d ** 2, axis=1)
         else:
             activation = self.theta_gp[0] * np.sum(d ** 2, axis=1)
         tmp = 0.5 * (l**2).sum(1)
-        tmp2 = np.maximum(2*np.sqrt(nu * activation / tmp), 1e-5)
-        k = np.sqrt(l[:, 0]) * np.sqrt(l[:, 1]) / (gamma(nu) * 2**(nu - 1))
+        tmp2 = np.maximum(2*np.sqrt(self.nu * activation / tmp), 1e-5)
+        k = np.sqrt(l[:, 0]) * np.sqrt(l[:, 1]) \
+            / (gamma(self.nu) * 2**(self.nu - 1))
         k /= np.sqrt(tmp)
-        k *= tmp2**nu * kv(nu, tmp2)
-
-        assert np.all(np.isfinite(k))
+        k *= tmp2**self.nu * kv(self.nu, tmp2)
 
         # Convert correlations to 2d matrix
         if Y is not None:
