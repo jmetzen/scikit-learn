@@ -192,29 +192,36 @@ class LocalLengthScalesKernel(Kernel):
     Smoothness", Christian Plagemann, Kristian Kersting, and Wolfram Burgard,
     ECML 2008
     """
-
-    def __init__(self, n_dims, X, nu=1.5,
+    def __init__(self, X, nu=1.5,
                  isotropic=True, theta0=1e-1, thetaL=1e-3, thetaU=1.0,
                  l_isotropic=True, theta_l_0=1e-1, theta_l_L=1e-3, theta_l_U=1e1,
                  l_samples=10, l_0=1.0, l_L=0.1, l_U=10.0):
-        self.n_dims = n_dims
         self.nu = nu
         self.isotropic = isotropic
+        self.theta0 = theta0
+        self.thetaL = thetaL
+        self.thetaU = thetaU
         self.l_isotropic = l_isotropic
+        self.theta_l_0 = theta_l_0
+        self.theta_l_L = theta_l_L
+        self.theta_l_U = theta_l_U
         self.l_samples = l_samples
+        self.l_0 = l_0
+        self.l_L = l_L
+        self.l_U = l_U
 
         assert X is not None
-        X = np.asarray(X)
+        self.X = np.asarray(X)
         if X.shape[0] > self.l_samples:
             kmeans = KMeans(n_clusters=self.l_samples)
-            self.X_ = kmeans.fit(X).cluster_centers_
+            self.X_ = kmeans.fit(self.X).cluster_centers_
         else:
-            self.X_ = np.asarray(X)
+            self.X_ = np.asarray(self.X)
 
         # Determine how many entries in theta belong to the different
         # categories (used later for parsing theta)
-        self.theta_gp_size = 1 if self.isotropic else self.n_dims
-        self.theta_l_size = 1 if self.l_isotropic else self.n_dims
+        self.theta_gp_size = 1 if self.isotropic else X.shape[1]
+        self.theta_l_size = 1 if self.l_isotropic else X.shape[1]
         self.theta_size = \
             self.theta_gp_size + self.theta_l_size + self.l_samples
 
@@ -230,28 +237,29 @@ class LocalLengthScalesKernel(Kernel):
         thetaL += [l_L] * self.l_samples
         thetaU += [l_U] * self.l_samples
 
-        param_space = np.vstack((thetaL, theta0, thetaU)).T
+        self.params = theta0
+        self.params_bounds = np.vstack((thetaL,  thetaU)).T
 
-        self._parse_param_space(param_space)
+        self.theta_vars = [("params", len(self.params))]
 
     @property
-    def params(self):
-        return self.theta
+    def theta(self):
+        return self.params
 
-    @params.setter
-    def params(self, theta):
+    @theta.setter
+    def theta(self, params):
         from . import GaussianProcessRegressor
         from .kernels import RBF
 
-        self.theta = np.asarray(theta, dtype=np.float)
+        self.params = np.asarray(params, dtype=np.float)
 
         # Parse theta into its components
         self.theta_gp, self.theta_l, self.length_scales = \
-            self._parse_theta(self.theta)
+            self._parse_theta(self.params)
 
         # Train length-scale Gaussian Process
-        kernel = RBF(np.atleast_2d(self.theta_l))
-        self.gp_l = GaussianProcessRegressor(kernel=kernel)  # XXX: deactivate optimizer
+        kernel = RBF(self.theta_l)
+        self.gp_l = GaussianProcessRegressor(kernel=kernel, optimizer=None)
         self.gp_l.fit(self.X_, np.log10(self.length_scales))
 
     def __call__(self, X, Y=None, eval_gradient=False):
@@ -298,10 +306,10 @@ class LocalLengthScalesKernel(Kernel):
                 return K
             else:
                 # approximate gradient numerically
-                def f(params):  # helper function
+                def f(theta):  # helper function
                     import copy  # XXX: Avoid deepcopy
                     kernel = copy.deepcopy(self)
-                    kernel.params = params
+                    kernel.theta = theta
                     return kernel(X)
                 return K, _approx_fprime(self.params, f, 1e-5)
 
