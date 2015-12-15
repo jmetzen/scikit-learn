@@ -115,7 +115,10 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
         same as the one passed as parameter but with optimized hyperparameters
 
     L_: array-like, shape = (n_samples, n_samples)
-        Lower-triangular Cholesky decomposition of the kernel in ``X_train_``
+        Lower-triangular Cholesky decomposition of the kernel on ``X_train_``
+
+    K_inv_: array-like, shape = (n_samples, n_samples)
+        Inverse of the  kernel on ``X_train_``
 
     alpha_: array-like, shape = (n_samples,)
         Dual coefficients of training data points in kernel space
@@ -224,6 +227,11 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
         K[np.diag_indices_from(K)] += self.alpha
         self.L_ = cholesky(K, lower=True)  # Line 2
         self.alpha_ = cho_solve((self.L_, True), self.y_train_)  # Line 3
+        # compute inverse K_inv of K based on its Cholesky
+        # decomposition L and its inverse L_inv. K_inv is required for
+        # returning standard-deviations for predictions
+        L_inv = solve_triangular(self.L_.T, np.eye(self.L_.shape[0]))
+        self.K_inv_ = L_inv.dot(L_inv.T)
 
         return self
 
@@ -287,13 +295,10 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
                 y_cov = self.kernel_(X) - K_trans.dot(v)  # Line 6
                 return y_mean, y_cov
             elif return_std:
-                # compute inverse K_inv of K based on its Cholesky
-                # decomposition L and its inverse L_inv
-                L_inv = solve_triangular(self.L_.T, np.eye(self.L_.shape[0]))
-                K_inv = L_inv.dot(L_inv.T)
                 # Compute variance of predictive distribution
                 y_var = self.kernel_.diag(X)
-                y_var -= np.einsum("ki,kj,ij->k", K_trans, K_trans, K_inv)
+                y_var -= \
+                    np.einsum("ki,kj,ij->k", K_trans, K_trans, self.K_inv_)
 
                 # Check if any of the variances is negative because of
                 # numerical issues. If yes: set the variance to 0.
