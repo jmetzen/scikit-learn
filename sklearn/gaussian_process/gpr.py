@@ -225,7 +225,7 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
         # of actual query points
         K = self.kernel_(self.X_train_)
         K[np.diag_indices_from(K)] += self.alpha
-        self.L_ = cholesky(K, lower=True)  # Line 2
+        self.L_ = cholesky(K, lower=True)  # Line 2 (Algorithm 2.1 of GPML)
         self.alpha_ = cho_solve((self.L_, True), self.y_train_)  # Line 3
         # compute inverse K_inv of K based on its Cholesky
         # decomposition L and its inverse L_inv. K_inv is required for
@@ -288,7 +288,8 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
                 return y_mean
         else:  # Predict based on GP posterior
             K_trans = self.kernel_(X, self.X_train_)
-            y_mean = K_trans.dot(self.alpha_)  # Line 4 (y_mean = f_star)
+            # Line 4 (Algorithm 2.1 of GPML)
+            y_mean = K_trans.dot(self.alpha_)  # (y_mean = f_star)
             y_mean = self.y_train_mean + y_mean  # undo normal.
             if return_cov:
                 v = cho_solve((self.L_, True), K_trans.T)  # Line 5
@@ -384,7 +385,7 @@ class GaussianProcessRegressor(BaseEstimator, RegressorMixin):
 
         K[np.diag_indices_from(K)] += self.alpha
         try:
-            L = cholesky(K, lower=True)  # Line 2
+            L = cholesky(K, lower=True)  # Line 2 (Algorithm 2.1 of GPML)
         except np.linalg.LinAlgError:
             return (-np.inf, np.zeros_like(theta)) \
                 if eval_gradient else -np.inf
